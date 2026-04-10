@@ -32,11 +32,10 @@ class FeaturedCourses extends StatelessWidget {
 
               children: const [
 
-                CourseCard(),
-
+                CourseCard(title: '', price: '',oldPrice: '', rating: '', students: '', image: '', badge: '',),
                 SizedBox(width: 16),
 
-                CourseCard()
+                CourseCard(title: '',price: '', oldPrice: '', rating: '', students: '', image: '',badge: '',)
 
               ],
             ),
@@ -48,7 +47,7 @@ class FeaturedCourses extends StatelessWidget {
 }
 
 class CourseCard extends StatelessWidget {
-  const CourseCard({super.key});
+  const CourseCard({super.key, required String title, required String price, required String oldPrice, required String rating, required String students, required String image, required String badge});
 
   @override
   Widget build(BuildContext context) {
