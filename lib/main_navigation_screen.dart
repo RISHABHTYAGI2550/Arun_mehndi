@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:convex_bottom_bar/convex_bottom_bar.dart';
 
-import 'features/courses/courses_screen.dart';
+import 'features/courses/screens/courses_screen.dart';
 import 'features/courses/learning_screen.dart';
 import 'features/courses/profile_screen.dart';
 import 'features/home/home_screen.dart';

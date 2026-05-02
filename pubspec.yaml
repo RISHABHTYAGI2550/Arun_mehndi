@@ -18,6 +18,7 @@ dependencies:
   cached_network_image: ^3.3.1
   convex_bottom_bar: ^3.2.0
   glassmorphism: ^3.0.0
+  shimmer: ^3.0.0
 
 
 
