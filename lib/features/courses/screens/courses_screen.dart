@@ -20,105 +20,152 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
   int page = 1;
   bool isLoading = true;
+  bool isLoadingMore = false;
   bool hasMore = true;
 
   String selectedCategory = "All";
   String? selectedLevel;
   String search = "";
-
   String token = "";
 
-  final ScrollController controller = ScrollController();
-  Timer? debounce;
+  final ScrollController _scrollController = ScrollController();
+  Timer? _debounce;
 
-  List<String> categories = ["All", "Mehndi", "Beauty", "Makeup", "Nail Art"];
+  // ✅ Yahan apni API ki exact category values daalo
+  // Pehle "All" se fetch karo aur console mein dekho
+  // course.category mein kya aata hai, wahi yahan daalo
+  final List<String> categories = [
+    "All",
+    "Mehndi",
+    "Beauty",
+    "Makeup",
+    "Nail Art",
+  ];
 
   @override
   void initState() {
     super.initState();
-    init();
-
-    controller.addListener(() {
-      if (controller.position.pixels ==
-          controller.position.maxScrollExtent &&
-          hasMore) {
-        loadMore();
-      }
-    });
+    _init();
+    _scrollController.addListener(_onScroll);
   }
 
-  // 🔥 INIT
-  Future<void> init() async {
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final current = _scrollController.position.pixels;
+
+    if (current >= maxScroll - 100 &&
+        !isLoadingMore &&
+        !isLoading &&
+        hasMore) {
+      loadMore();
+    }
+  }
+
+  Future<void> _init() async {
     token = await StorageHelper.getToken() ?? "";
-    fetchCourses();
+    await fetchCourses();
   }
 
-  // 🔥 FETCH COURSES (FINAL FIXED)
   Future<void> fetchCourses() async {
+    if (!mounted) return;
+
     setState(() {
       isLoading = true;
+      isLoadingMore = false;
       page = 1;
       hasMore = true;
+      courses = [];
     });
 
     try {
       final data = await CourseService.getCourses(
         token: token,
-
-        // 🔥 IMPORTANT FIX (Search priority)
-        category: search.isEmpty
-            ? (selectedCategory == "All" ? null : selectedCategory)
-            : null,
-
+        category: (search.isNotEmpty || selectedCategory == "All")
+            ? null
+            : selectedCategory, // ✅ "All" pe null bhejo
         level: selectedLevel,
-
         search: search.trim().isEmpty ? null : search.trim(),
-
-        page: page,
+        page: 1,
       );
 
-      courses = data;
+      if (!mounted) return;
 
-      if (data.isEmpty) hasMore = false;
+      // ✅ Debug: pehli baar fetch pe categories print karo
+      if (data.isNotEmpty) {
+        debugPrint("📋 AVAILABLE CATEGORIES IN RESPONSE:");
+        for (var c in data) {
+          debugPrint("   → '${c.category}'"); // ✅ exact value dekho
+        }
+      }
+
+      setState(() {
+        courses = data;
+        hasMore = data.length >= 10;
+        isLoading = false;
+      });
     } catch (e) {
-      print("❌ ERROR: $e");
+      debugPrint("❌ FETCH ERROR: $e");
+      if (mounted) setState(() => isLoading = false);
     }
-
-    setState(() => isLoading = false);
   }
 
-  // 🔥 PAGINATION
   Future<void> loadMore() async {
-    page++;
+    if (isLoadingMore || !hasMore || isLoading) return;
 
-    final data = await CourseService.getCourses(
-      token: token,
-      category: selectedCategory == "All" ? null : selectedCategory,
-      level: selectedLevel,
-      search: search.trim().isEmpty ? null : search.trim(),
-      page: page,
-    );
+    setState(() => isLoadingMore = true);
 
-    if (data.isEmpty) {
-      hasMore = false;
-    } else {
-      courses.addAll(data);
+    final nextPage = page + 1;
+
+    try {
+      final data = await CourseService.getCourses(
+        token: token,
+        category: selectedCategory == "All" ? null : selectedCategory,
+        level: selectedLevel,
+        search: search.trim().isEmpty ? null : search.trim(),
+        page: nextPage,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        if (data.isEmpty || data.length < 10) hasMore = false;
+        if (data.isNotEmpty) {
+          courses.addAll(data);
+          page = nextPage;
+        }
+        isLoadingMore = false;
+      });
+    } catch (e) {
+      debugPrint("❌ LOAD MORE ERROR: $e");
+      if (mounted) setState(() => isLoadingMore = false);
     }
-
-    setState(() {});
   }
 
-  // 🔥 FILTER POPUP
-  void openFilter() {
+  void _openFilter() {
     showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (_) => FilterBottomSheet(
+        selectedLevel: selectedLevel,
         onApply: (level) {
           setState(() {
             selectedLevel = level;
-            search = ""; // reset search
+            search = "";
           });
-
+          fetchCourses();
+        },
+        onClear: () {
+          setState(() => selectedLevel = null);
           fetchCourses();
         },
       ),
@@ -126,104 +173,219 @@ class _CoursesScreenState extends State<CoursesScreen> {
   }
 
   @override
-  void dispose() {
-    controller.dispose();
-    debounce?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
+
       appBar: AppBar(
-        title: const Text("Courses"),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        surfaceTintColor: Colors.white,
+        title: const Text(
+          "Courses",
+          style: TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+          ),
+        ),
+        actions: [
+          Stack(
+            children: [
+              IconButton(
+                onPressed: _openFilter,
+                icon: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Icon(
+                    Icons.tune,
+                    color: selectedLevel != null ? Colors.red : Colors.black54,
+                    size: 20,
+                  ),
+                ),
+              ),
+              if (selectedLevel != null)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
+
       body: Column(
         children: [
-          // 🔍 SEARCH
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
+
+          // ─── SEARCH ──────────────────────────────────
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: TextField(
+              style: const TextStyle(color: Colors.black87),
+              decoration: InputDecoration(
+                hintText: "Search courses...",
+                hintStyle: TextStyle(color: Colors.grey.shade400),
+                prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
+                filled: true,
+                fillColor: Colors.grey.shade100,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (val) {
+                if (_debounce?.isActive ?? false) _debounce!.cancel();
+                _debounce = Timer(const Duration(milliseconds: 500), () {
+                  setState(() {
+                    search = val.trim();
+                    selectedCategory = "All";
+                    selectedLevel = null;
+                  });
+                  fetchCourses();
+                });
+              },
+            ),
+          ),
+
+          // ─── CATEGORY CHIPS ──────────────────────────
+          Container(
+            color: Colors.white,
+            child: Column(
               children: [
-                Expanded(
-                  child: TextField(
-                    decoration:
-                    const InputDecoration(hintText: "Search courses..."),
-                    onChanged: (val) {
-                      if (debounce?.isActive ?? false) debounce!.cancel();
+                Divider(color: Colors.grey.shade100, height: 1),
+                SizedBox(
+                  height: 52,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    itemCount: categories.length,
+                    itemBuilder: (_, i) {
+                      final cat = categories[i];
+                      final isSelected = selectedCategory == cat;
 
-                      debounce =
-                          Timer(const Duration(milliseconds: 400), () {
-                            setState(() {
-                              search = val;
-
-                              // 🔥 reset filters
-                              selectedCategory = "All";
-                              selectedLevel = null;
-                            });
-
-                            fetchCourses();
+                      return GestureDetector(
+                        onTap: () {
+                          if (selectedCategory == cat) return;
+                          setState(() {
+                            selectedCategory = cat;
+                            search = "";
                           });
+                          fetchCourses();
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Colors.red
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.red
+                                  : Colors.grey.shade200,
+                            ),
+                          ),
+                          child: Text(
+                            cat,
+                            style: TextStyle(
+                              color: isSelected
+                                  ? Colors.white
+                                  : Colors.grey.shade700,
+                              fontSize: 13,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      );
                     },
                   ),
                 ),
-                IconButton(
-                  onPressed: openFilter,
-                  icon: const Icon(Icons.filter_list),
-                )
               ],
             ),
           ),
 
-          // 🏷 CATEGORY
-          SizedBox(
-            height: 40,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: categories.length,
-              itemBuilder: (_, i) {
-                final cat = categories[i];
+          const SizedBox(height: 8),
 
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      selectedCategory = cat;
-                      search = "";
-                    });
-
-                    fetchCourses();
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Chip(
-                      label: Text(cat),
-                      backgroundColor: selectedCategory == cat
-                          ? Colors.red
-                          : Colors.grey.shade200,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // 📦 COURSE LIST
+          // ─── LIST ────────────────────────────────────
           Expanded(
             child: isLoading
                 ? ListView.builder(
-              itemCount: 5,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: 6,
               itemBuilder: (_, __) => const CourseCardShimmer(),
             )
                 : courses.isEmpty
-                ? const Center(child: Text("No courses found"))
+                ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.search_off,
+                      color: Colors.grey.shade300, size: 60),
+                  const SizedBox(height: 12),
+                  Text(
+                    "No courses found",
+                    style: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 16,
+                    ),
+                  ),
+                  // ✅ Show current filter for debug
+                  if (selectedCategory != "All")
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        "Category: $selectedCategory",
+                        style: TextStyle(
+                          color: Colors.grey.shade300,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            )
                 : ListView.builder(
-              controller: controller,
-              itemCount: courses.length,
+              controller: _scrollController,
+              padding:
+              const EdgeInsets.fromLTRB(16, 4, 16, 24),
+              itemCount:
+              courses.length + (isLoadingMore ? 1 : 0),
               itemBuilder: (_, i) {
+                if (i == courses.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Colors.red,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  );
+                }
                 return CourseCard(course: courses[i]);
               },
             ),
-          )
+          ),
         ],
       ),
     );
