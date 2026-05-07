@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../features/home/home_screen.dart';
 import '../features/courses/screens/courses_screen.dart';
-import '../features/courses/learning_screen.dart';
-import '../features/courses/profile_screen.dart';
+import '../features/learning/learning_screen.dart';
+import '../features/profile/profile_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   final int initialIndex;
